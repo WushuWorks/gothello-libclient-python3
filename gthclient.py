@@ -42,7 +42,7 @@ class GthClient(object):
         self.fsock_in = None
         self.fsock_out = None
 
-        self.msg_serial = None
+        self.serial = 0
 
         self.white_time_control = None
         self.black_time_control = None
@@ -75,10 +75,7 @@ class GthClient(object):
                 "illegal greeting",
             )
 
-        print(
-            "{} player {}".format(client_version, side),
-            file=self.fsock_out,
-        )
+        self.send("{} player {}".format(client_version, side))
 
         msg_code, msg_text = self.get_msg()
         if msg_code not in {100, 101}:
@@ -144,6 +141,14 @@ class GthClient(object):
         return int(words[0])
 
 
+    def send(self, msg_text):
+        print(
+            msg_text,
+            file=self.fsock_out,
+            end="\r\n",
+        )
+        self.fsock_out.flush()
+
     def make_move(self, pos):
         if self.winner != None:
             raise MoveError(None, None, "move with game over")
@@ -156,10 +161,7 @@ class GthClient(object):
         else:
             assert False
 
-        print(
-            "{}{} {}".format(self.serial, ellipses, movebuf),
-            file=self.fsock_out,
-        )
+        self.send("{}{} {}".format(self.serial, ellipses, pos))
 
         msg_code, msg_text = self.get_msg()
         if msg_code == 201:
@@ -187,51 +189,51 @@ class GthClient(object):
         return True
 
 
-def get_move():
-    if winner != None:
-        raise MoveError(None, None, "move with game over")
+    def get_move(self):
+        if self.winner != None:
+            raise MoveError(None, None, "move with game over")
 
-    if self.who == "white":
-        self.serial += 1
+        if self.who == "white":
+            self.serial += 1
 
-    msg_code, msg_text = self.get_msg()
-    if (msg_code < 311 or msg_code > 326) and msg_code not in {361, 362}:
-        raise MoveError(msg_code, msg_text, "bad move result code")
+        msg_code, msg_text = self.get_msg()
+        if (msg_code < 311 or msg_code > 326) and msg_code not in {361, 362}:
+            raise MoveError(msg_code, msg_text, "bad move result code")
 
-    if self.who == "white":
-        codes = {312, 314, 316, 318, 323, 324, 326}
-    else:
-        codes = {311, 313, 315, 317, 321, 322, 325}
-    if msg_code in codes:
-        raise MoveError(msg_code, msg_text, "move received from wrong side")
+        if self.who == "white":
+            codes = {312, 314, 316, 318, 323, 324, 326}
+        else:
+            codes = {311, 313, 315, 317, 321, 322, 325}
+        if msg_code in codes:
+            raise MoveError(msg_code, msg_text, "move received from wrong side")
 
-    if (msg_code >= 311 and msg_code <= 318) or \
-       (msg_code >= 321 and msg_code <= 326):
-       self.get_move(pos)
+        if (msg_code >= 311 and msg_code <= 318) or \
+           (msg_code >= 321 and msg_code <= 326):
+           pos = self.get_move()
 
-    if self.who == "white":
-        if msg_code in {311, 313, 315, 317}:
-            return True
-        if msg_code in {321, 361}:
-            self.winner = "black"
-            return False
-        if msg_code in {322, 362}:
-            self.winner = "white"
-            return False
-        if msg_code == 325:
-            raise MoveError(msg_code, msg_text, "game terminated early")
-    elif self.who == "black":
-        if msg_code in {312, 314, 316, 318}:
-            return True
-        if msg_code in {323, 362}:
-            self.winner = "white"
-            return False
-        if msg_code in {324, 361}:
-            self.winner = "black"
-            return False
-        if msg_code == 326:
-            raise MoveError(msg_code, msg_text, "game terminated early")
-    else:
-        assert False
+        if self.who == "white":
+            if msg_code in {311, 313, 315, 317}:
+                return (True, pos)
+            if msg_code in {321, 361}:
+                self.winner = "black"
+                return (False, pos)
+            if msg_code in {322, 362}:
+                self.winner = "white"
+                return (False, pos)
+            if msg_code == 325:
+                raise MoveError(msg_code, msg_text, "game terminated early")
+        elif self.who == "black":
+            if msg_code in {312, 314, 316, 318}:
+                return (True, pos)
+            if msg_code in {323, 362}:
+                self.winner = "white"
+                return (False, pos)
+            if msg_code in {324, 361}:
+                self.winner = "black"
+                return (False, pos)
+            if msg_code == 326:
+                raise MoveError(msg_code, msg_text, "game terminated early")
+        else:
+            assert False
 
-    raise MoveError(msg_code, msg_text, "unknown move status code")
+        raise MoveError(msg_code, msg_text, "unknown move status code")
