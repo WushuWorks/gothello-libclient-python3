@@ -10,8 +10,6 @@ server_base = 29068
 
 who = None
 
-msg_text = None
-msg_code = None
 msg_serial = None
 
 white_time_control = None
@@ -46,7 +44,6 @@ class ProtocolError(ClientError):
 
 
 def get_msg():
-    global msg_code, msg_text
     while True:
         line = next(fsock_in)
         words = line.split()
@@ -59,6 +56,7 @@ def get_msg():
             raise MessageError(c, "invalid message code digit")
     msg_code = int(words[0])
     msg_text = ' '.join(words[1:])
+    return (msg_code, msg_text)
     
 
 def closeall():
@@ -96,7 +94,7 @@ def start_game(side, host, server):
     fsock_in = sock.makefile("r", buffer=1, encoding="utf_8", newline="\r\n")
     fsock_out = sock.makefile("w", buffer=1, encoding="utf_8", newline="\r")
 
-    get_msg()
+    msg_code, msg_text = get_msg()
     if msg_code != 0:
         raise ProtocolError(
             msg_code,
@@ -109,7 +107,7 @@ def start_game(side, host, server):
         file=fsock_out,
     )
 
-    get_msg()
+    msg_code, msg_text = get_msg()
     if msg_code not in {100, 101}:
         raise ProtocolError(
             msg_code,
@@ -126,8 +124,7 @@ def start_game(side, host, server):
             my_time = black_time_control
             opp_time = white_time_control
 
-    get_msg()
-
+    msg_code, msg_text = get_msg()
     if (msg_code != 351 and side == "white") or \
        (msg_code != 352 and side == "black"):
         raise ProtocolError(
@@ -161,7 +158,7 @@ def make_move(pos):
         file=fsock_out,
     )
 
-    get_msg()
+    msg_code, msg_text = get_msg()
     if msg_code == 201:
         winner = who
     elif msg_code == 202:
@@ -180,7 +177,7 @@ def make_move(pos):
     if msg_code == 207:
         my_time = get_time()
 
-    get_msg();
+    msg_code, msg_text = get_msg();
     if msg_code < 311 or msg_code > 318:
         raise MoveError(msg_code, msg_text, "unexpected move status code")
 
@@ -199,7 +196,7 @@ def get_move():
     if who == "white":
         serial += 1
 
-    get_msg()
+    msg_code, msg_text = get_msg()
     if (msg_code < 311 or msg_code > 326) and msg_code not in {361, 362}:
         raise MoveError(msg_code, msg_text, "bad move result code")
 
