@@ -1,24 +1,8 @@
 # Gothello daemon client library
 # Bart Massey <bart@cs.pdx.edu>
 
-sock = None
-fsock_in = None
-fsock_out = None
-
 client_version = "0.9.1"
 server_base = 29068
-
-who = None
-
-msg_serial = None
-
-white_time_control = None
-black_time_control = None
-my_time = None
-opp_time = None
-
-winner = None
-
 
 class ClientError(Exception):
     pass
@@ -42,29 +26,6 @@ class ProtocolError(ClientError):
         self.text = text
         self.message = message
 
-
-def get_msg():
-    while True:
-        line = next(fsock_in)
-        words = line.split()
-        if len(words) > 0:
-            break
-    if len(words[0]) != 3:
-        raise MessageError(line, "invalid message code")
-    for c in words[0]:
-        if c not in "0123456789":
-            raise MessageError(c, "invalid message code digit")
-    msg_code = int(words[0])
-    msg_text = ' '.join(words[1:])
-    return (msg_code, msg_text)
-    
-
-def closeall():
-    fsock_out.close()
-    fsock_in.close()
-    sock.close()
-
-
 def opponent(who):
     if who == "white":
         return "black"
@@ -72,135 +33,170 @@ def opponent(who):
         return "white"
     assert False
 
+class GthClient(object):
 
-def get_time_controls():
-    global white_time_control, black_time_control
-    words = msg_text.split()
-    time_controls = [int(t) for t in words[:2]]
-    if len(time_controls) > 0:
-        white_time_control = time_controls[0]
-    if len(time_controls) > 1:
-        black_time_control = time_controls[1]
-    else:    
-        black_time_control = white_time_control
+    def __init__(self, side, host, server):
+        self.sock = None
+        self.fsock_in = None
+        self.fsock_out = None
 
+        self.msg_serial = None
 
-def start_game(side, host, server):
-    global sock, fsock_in, fsock_out
-    global my_time, opp_time
-    global who
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((host, server_base + server))
-    fsock_in = sock.makefile("r", buffer=1, encoding="utf_8", newline="\r\n")
-    fsock_out = sock.makefile("w", buffer=1, encoding="utf_8", newline="\r")
+        self.white_time_control = None
+        self.black_time_control = None
+        self.my_time = None
+        self.opp_time = None
 
-    msg_code, msg_text = get_msg()
-    if msg_code != 0:
-        raise ProtocolError(
-            msg_code,
-            msg_text,
-            "illegal greeting",
+        self.winner = None
+        self.who = side
+
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.connect((host, server_base + server))
+        self.fsock_in = sock.makefile(
+            "r",
+            buffer=1,
+            encoding="utf_8",
+            newline="\r\n",
+        )
+        self.fsock_out = sock.makefile(
+            "w",
+            buffer=1,
+            encoding="utf_8",
+            newline="\r",
         )
 
-    print(
-        "{} player {}".format(client_version, side),
-        file=fsock_out,
-    )
+        msg_code, msg_text = self.get_mesg()
+        if msg_code != 0:
+            raise ProtocolError(
+                msg_code,
+                msg_text,
+                "illegal greeting",
+            )
 
-    msg_code, msg_text = get_msg()
-    if msg_code not in {100, 101}:
-        raise ProtocolError(
-            msg_code,
-            msg_text,
-            "side failure",
+        print(
+            "{} player {}".format(client_version, side),
+            file=self.fsock_out,
         )
 
-    if msg_code == 101:
-        get_time_controls()
-        if side == "white":
-            my_time = white_time_control
-            opp_time = black_time_control
+        msg_code, msg_text = self.get_msg()
+        if msg_code not in {100, 101}:
+            raise ProtocolError(
+                msg_code,
+                msg_text,
+                "side failure",
+            )
+
+        if msg_code == 101:
+            self.get_time_controls(msg_text)
+            if side == "white":
+                self.my_time = white_time_control
+                self.opp_time = black_time_control
+            else:
+                self.my_time = black_time_control
+                self.opp_time = white_time_control
+
+        msg_code, msg_text = self.get_msg()
+        if (msg_code != 351 and side == "white") or \
+           (msg_code != 352 and side == "black"):
+            raise ProtocolError(
+                msg_code,
+                msg_text,
+                "got wrong side",
+            )
+
+    def get_msg(self):
+        while True:
+            line = next(self.fsock_in)
+            words = line.split()
+            if len(words) > 0:
+                break
+        if len(words[0]) != 3:
+            raise MessageError(line, "invalid message code")
+        for c in words[0]:
+            if c not in "0123456789":
+                raise MessageError(c, "invalid message code digit")
+        msg_code = int(words[0])
+        msg_text = ' '.join(words[1:])
+        return (msg_code, msg_text)
+    
+
+    def closeall(self):
+        self.fsock_out.close()
+        self.fsock_in.close()
+        self.sock.close()
+
+
+    def get_time_controls(self, msg_text):
+        words = msg_text.split()
+        time_controls = [int(t) for t in words[:2]]
+        if len(time_controls) > 0:
+            self.white_time_control = time_controls[0]
+        if len(time_controls) > 1:
+            self.black_time_control = time_controls[1]
+        else:    
+            self.black_time_control = white_time_control
+
+
+    def get_time(self, msg_text):
+        words = msg_text.split()
+        return int(words[0])
+
+
+    def make_move(self, pos):
+        if self.winner != None:
+            raise MoveError(None, None, "move with game over")
+
+        if self.who == "black":
+            ellipses = ""
+            self.serial += 1
+        elif self.who == "white":
+            ellipses = " ..."
         else:
-            my_time = black_time_control
-            opp_time = white_time_control
+            assert False
 
-    msg_code, msg_text = get_msg()
-    if (msg_code != 351 and side == "white") or \
-       (msg_code != 352 and side == "black"):
-        raise ProtocolError(
-            msg_code,
-            msg_text,
-            "got wrong side",
+        print(
+            "{}{} {}".format(self.serial, ellipses, movebuf),
+            file=self.fsock_out,
         )
 
-    who = side
+        msg_code, msg_text = self.get_msg()
+        if msg_code == 201:
+            self.winner = self.who
+        elif msg_code == 202:
+            self.winner = opponent(self.who)
+        elif msg_code == 203:
+            raise MoveError(msg_code, msg_text, "game ended early")
+
+        if self.winner != None:
+            closeall()
+            return False
+
+        if msg_code != 200 and msg_code != 207:
+            raise MoveError(msg_code, msg_text, "unexpected move result code")
 
 
-def make_move(pos):
-    global serial, winner, my_time
+        if msg_code == 207:
+            self.my_time = self.get_time(msg_text)
 
-    if who == None:
-        raise MoveError(None, None, "move before initialized")
+        msg_code, msg_text = self.get_msg();
+        if msg_code < 311 or msg_code > 318:
+            raise MoveError(msg_code, msg_text, "unexpected move status code")
 
-    if winner != None:
-        raise MoveError(None, None, "move with game over")
-
-    if who == "black":
-        ellipses = ""
-        serial += 1
-    elif who == "white":
-        ellipses = " ..."
-    else:
-        assert False
-      
-    print(
-        "{}{} {}".format(serial, ellipses, movebuf),
-        file=fsock_out,
-    )
-
-    msg_code, msg_text = get_msg()
-    if msg_code == 201:
-        winner = who
-    elif msg_code == 202:
-        winner = opponent(who)
-    elif msg_code == 203:
-        raise MoveError(msg_code, msg_text, "game ended early")
-
-    if winner != None:
-        closeall()
-        return False
-
-    if msg_code != 200 and msg_code != 207:
-        raise MoveError(msg_code, msg_text, "unexpected move result code")
-
-
-    if msg_code == 207:
-        my_time = get_time()
-
-    msg_code, msg_text = get_msg();
-    if msg_code < 311 or msg_code > 318:
-        raise MoveError(msg_code, msg_text, "unexpected move status code")
-
-    return True
+        return True
 
 
 def get_move():
-    global serial, winner, my_time
-
-    if who == None:
-        raise MoveError(None, None, "move before initialized")
-
     if winner != None:
         raise MoveError(None, None, "move with game over")
 
-    if who == "white":
-        serial += 1
+    if self.who == "white":
+        self.serial += 1
 
-    msg_code, msg_text = get_msg()
+    msg_code, msg_text = self.get_msg()
     if (msg_code < 311 or msg_code > 326) and msg_code not in {361, 362}:
         raise MoveError(msg_code, msg_text, "bad move result code")
 
-    if who == "white":
+    if self.who == "white":
         codes = {312, 314, 316, 318, 323, 324, 326}
     else:
         codes = {311, 313, 315, 317, 321, 322, 325}
@@ -209,29 +205,31 @@ def get_move():
 
     if (msg_code >= 311 and msg_code <= 318) or \
        (msg_code >= 321 and msg_code <= 326):
-       get_move(pos)
+       self.get_move(pos)
 
-    if who == "white":
+    if self.who == "white":
         if msg_code in {311, 313, 315, 317}:
             return True
         if msg_code in {321, 361}:
-            winner = "black"
+            self.winner = "black"
             return False
         if msg_code in {322, 362}:
-            winner = "white"
+            self.winner = "white"
             return False
         if msg_code == 325:
             raise MoveError(msg_code, msg_text, "game terminated early")
-    elif who == "black":
+    elif self.who == "black":
         if msg_code in {312, 314, 316, 318}:
             return True
         if msg_code in {323, 362}:
-            winner = "white"
+            self.winner = "white"
             return False
         if msg_code in {324, 361}:
-            winner = "black"
+            self.winner = "black"
             return False
         if msg_code == 326:
             raise MoveError(msg_code, msg_text, "game terminated early")
+    else:
+        assert False
 
     raise MoveError(msg_code, msg_text, "unknown move status code")
