@@ -191,25 +191,38 @@ class GthClient(object):
 
     def get_move(self):
         if self.winner != None:
-            raise MoveError(None, None, "move with game over")
-
-        if self.who == "white":
-            self.serial += 1
+            raise MoveError(None, None, "read move with game over")
 
         msg_code, msg_text = self.get_msg()
-        if (msg_code < 311 or msg_code > 326) and msg_code not in {361, 362}:
-            raise MoveError(msg_code, msg_text, "bad move result code")
+        words = msg_text.split()
 
-        if self.who == "white":
-            codes = {312, 314, 316, 318, 323, 324, 326}
+        if msg_code in {311, 321, 322, 325, 315}:
+            side = "black"
+            self.serial = int(words[0])
+            pos = words[1]
+        elif msg_code in {313, 317}:
+            side = "black"
+            self.serial = int(words[0])
+            pos = words[1]
+            self.opp_time = int(words[2])
+        elif msg_code in {312, 323, 324, 326, 316}:
+            side = "white"
+            self.serial = int(words[0])
+            pos = words[2]
+        elif msg_code in {314, 318}:
+            side = "white"
+            self.serial = int(words[0])
+            pos = words[2]
+            self.opp_time = int(words[2])
         else:
-            codes = {311, 313, 315, 317, 321, 322, 325}
-        if msg_code in codes:
-            raise MoveError(msg_code, msg_text, "move received from wrong side")
+            raise MoveError(msg_code, msg_text, "unknown move status code")
 
-        if (msg_code >= 311 and msg_code <= 318) or \
-           (msg_code >= 321 and msg_code <= 326):
-           pos = self.get_move()
+        if side != opponent(self.who):
+            raise MoveError(
+                msg_code,
+                msg_text,
+                "move received from wrong side"
+            )
 
         if self.who == "white":
             if msg_code in {311, 313, 315, 317}:
@@ -222,6 +235,7 @@ class GthClient(object):
                 return (False, pos)
             if msg_code == 325:
                 raise MoveError(msg_code, msg_text, "game terminated early")
+            assert False
         elif self.who == "black":
             if msg_code in {312, 314, 316, 318}:
                 return (True, pos)
@@ -233,7 +247,6 @@ class GthClient(object):
                 return (False, pos)
             if msg_code == 326:
                 raise MoveError(msg_code, msg_text, "game terminated early")
+            assert False
         else:
             assert False
-
-        raise MoveError(msg_code, msg_text, "unknown move status code")
