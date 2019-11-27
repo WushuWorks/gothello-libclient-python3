@@ -1,6 +1,8 @@
 # Gothello daemon client library
 # Bart Massey <bart@cs.pdx.edu>
 
+import socket
+
 client_version = "0.9.1"
 server_base = 29068
 
@@ -52,20 +54,20 @@ class GthClient(object):
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.connect((host, server_base + server))
-        self.fsock_in = sock.makefile(
+        self.fsock_in = self.sock.makefile(
             "r",
-            buffer=1,
+            buffering=1,
             encoding="utf_8",
             newline="\r\n",
         )
-        self.fsock_out = sock.makefile(
+        self.fsock_out = self.sock.makefile(
             "w",
-            buffer=1,
+            buffering=1,
             encoding="utf_8",
             newline="\r",
         )
 
-        msg_code, msg_text = self.get_mesg()
+        msg_code, msg_text = self.get_msg()
         if msg_code != 0:
             raise ProtocolError(
                 msg_code,
