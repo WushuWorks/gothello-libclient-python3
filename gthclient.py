@@ -11,8 +11,12 @@ class ClientError(Exception):
 
 
 class MoveError(ClientError):
-    def __init__(self, expression, message):
-        self.expression = expression
+    ILLEGAL = 1
+    DONE = 2
+    DISCO = 3
+
+    def __init__(self, cause, message):
+        self.cause = cause
         self.message = message
 
 
@@ -151,7 +155,10 @@ class GthClient(object):
 
     def make_move(self, pos):
         if self.winner != None:
-            raise MoveError(None, None, "move with game over")
+            raise MoveError(
+                MoveError.DONE,
+                "move with game over",
+            )
 
         if self.who == "black":
             ellipses = ""
@@ -169,14 +176,27 @@ class GthClient(object):
         elif msg_code == 202:
             self.winner = opponent(self.who)
         elif msg_code == 203:
-            raise MoveError(msg_code, msg_text, "game ended early")
+            raise MoveError(
+                MoveError.DISCO,
+                "disconnected",
+            )
 
         if self.winner != None:
-            closeall()
+            self.closeall()
             return False
 
         if msg_code != 200 and msg_code != 207:
-            raise MoveError(msg_code, msg_text, "unexpected move result code")
+            if msg_code == 291:
+                raise MoveError(
+                    MoveError.ILLEGAL,
+                    "illegal move",
+                )
+            else:
+                raise ProtocolError(
+                    msg_code,
+                    msg_text,
+                    "unexpected move result code",
+                )
 
 
         if msg_code == 207:
@@ -184,14 +204,21 @@ class GthClient(object):
 
         msg_code, msg_text = self.get_msg();
         if msg_code < 311 or msg_code > 318:
-            raise MoveError(msg_code, msg_text, "unexpected move status code")
+            raise ProtocolError(
+                msg_code,
+                msg_text,
+                "unexpected move status code",
+            )
 
         return True
 
 
     def get_move(self):
         if self.winner != None:
-            raise MoveError(None, None, "read move with game over")
+            raise MoveError(
+                MoveError.DONE,
+                "read move with game over",
+            )
 
         msg_code, msg_text = self.get_msg()
         words = msg_text.split()
@@ -215,10 +242,14 @@ class GthClient(object):
             pos = words[2]
             self.opp_time = int(words[2])
         else:
-            raise MoveError(msg_code, msg_text, "unknown move status code")
+            raise ProtocolError(
+                msg_code,
+                msg_text,
+                "unknown move status code",
+            )
 
         if side != opponent(self.who):
-            raise MoveError(
+            raise ProtocolError(
                 msg_code,
                 msg_text,
                 "move received from wrong side"
@@ -234,7 +265,10 @@ class GthClient(object):
                 self.winner = "white"
                 return (False, pos)
             if msg_code == 325:
-                raise MoveError(msg_code, msg_text, "game terminated early")
+                raise MoveError(
+                    MoveError.DISCO,
+                    "game terminated early",
+                )
             assert False
         elif self.who == "black":
             if msg_code in {312, 314, 316, 318}:
@@ -246,7 +280,10 @@ class GthClient(object):
                 self.winner = "black"
                 return (False, pos)
             if msg_code == 326:
-                raise MoveError(msg_code, msg_text, "game terminated early")
+                raise MoveError(
+                    MoveError.DISCO,
+                    "game terminated early",
+                )
             assert False
         else:
             assert False
