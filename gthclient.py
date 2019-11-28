@@ -7,31 +7,60 @@ client_version = "0.9.1"
 server_base = 29068
 
 class ClientError(Exception):
+    """
+    Base class for client errors.
+    """
     pass
 
 
 class MoveError(ClientError):
+    """
+    Raised when an attemt to make or
+    get a move fails due to an error
+    caused by misused of this client.
+    """
+
+    # Attempted to make an illegal move.
     ILLEGAL = 1
+
+    # Attempted to make or get a move in
+    # a finished game.
     DONE = 2
+
+    # Client was disconnected during an attempt
+    # to make or get a move.
     DISCO = 3
 
     def __init__(self, cause, message):
+        """Create a MoveError"""
         self.cause = cause
         self.message = message
 
 
 class MessageError(ClientError):
+    """
+    Raised when an attempt to send or receive a message fails.
+    """
+
     def __init__(self, expression, message):
+        """Create a MessageError"""
         self.expression = expression
         self.message = message
 
 
 class ProtocolError(ClientError):
+    """
+    Raised when a communications problem related to
+    protocol misunderstandings occurs.
+    """
+
     def __init__(self, expression, text, message):
+        """Create a ProtocolError"""
         self.expression = expression
         self.text = text
         self.message = message
 
+# Private method for flipping side.
 def opponent(who):
     if who == "white":
         return "black"
@@ -40,37 +69,53 @@ def opponent(who):
     assert False
 
 class GthClient(object):
+    """
+    Gothello client class.
+    """
 
     def __init__(self, side, host, server):
-        self.sock = None
+        """
+        Give a side ("white" or "black"), the
+        hostname of the server, and the "server-number"
+        of that server, create a new Gothello client.
+        """
+
+        # Sockets for managing the server interaction.
         self.fsock_in = None
         self.fsock_out = None
 
+        # Move number.
         self.serial = 0
 
+        # Time controls and times remaining.
         self.white_time_control = None
         self.black_time_control = None
         self.my_time = None
         self.opp_time = None
 
+        # At end of game, reports who won.
         self.winner = None
+
+        # Side we are playing.
         self.who = side
 
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect((host, server_base + server))
-        self.fsock_in = self.sock.makefile(
+        # Connect to the server.
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((host, server_base + server))
+        self.fsock_in = sock.makefile(
             "r",
             buffering=1,
             encoding="utf_8",
             newline="\r\n",
         )
-        self.fsock_out = self.sock.makefile(
+        self.fsock_out = sock.makefile(
             "w",
             buffering=1,
             encoding="utf_8",
             newline="\r",
         )
 
+        # Check that this is a valid server.
         msg_code, msg_text = self.get_msg()
         if msg_code != 0:
             raise ProtocolError(
@@ -79,8 +124,9 @@ class GthClient(object):
                 "illegal greeting",
             )
 
+        # Tell the server what we're doing. Get ack and
+        # time controls.
         self.send("{} player {}".format(client_version, side))
-
         msg_code, msg_text = self.get_msg()
         if msg_code not in {100, 101}:
             raise ProtocolError(
@@ -98,6 +144,9 @@ class GthClient(object):
                 self.my_time = black_time_control
                 self.opp_time = white_time_control
 
+        
+        # Wait for the opponent to connect and check that
+        # they are playing the other side.
         msg_code, msg_text = self.get_msg()
         if (msg_code != 351 and side == "white") or \
            (msg_code != 352 and side == "black"):
@@ -108,6 +157,12 @@ class GthClient(object):
             )
 
     def get_msg(self):
+        """
+        Get a message from the server. Ignores blank lines.
+        Returns a tuple of the decoded message code and the
+        rest of the message text.
+        """
+
         while True:
             line = next(self.fsock_in)
             words = line.split()
@@ -124,10 +179,12 @@ class GthClient(object):
     
 
     def closeall(self):
+        """
+        Close the sockets, disconnecting from the server.
+        """
+        
         self.fsock_out.close()
         self.fsock_in.close()
-        self.sock.close()
-
 
     def get_time_controls(self, msg_text):
         words = msg_text.split()
@@ -146,6 +203,10 @@ class GthClient(object):
 
 
     def send(self, msg_text):
+        """
+        Send a line to the server.
+        """
+
         print(
             msg_text,
             file=self.fsock_out,
@@ -154,22 +215,28 @@ class GthClient(object):
         self.fsock_out.flush()
 
     def make_move(self, pos):
+        """
+        Given a position string in standard format or
+        "pass", send to the server.
+        """
+
+        # Check that game is still on.
         if self.winner != None:
             raise MoveError(
                 MoveError.DONE,
                 "move with game over",
             )
 
+        # Send the move to the server.
         if self.who == "black":
             ellipses = ""
-            self.serial += 1
         elif self.who == "white":
             ellipses = " ..."
         else:
             assert False
+        self.send("{}{} {}".format(self.serial + 1, ellipses, pos))
 
-        self.send("{}{} {}".format(self.serial, ellipses, pos))
-
+        # Get an ack from the server.
         msg_code, msg_text = self.get_msg()
         if msg_code == 201:
             self.winner = self.who
@@ -181,10 +248,12 @@ class GthClient(object):
                 "disconnected",
             )
 
+        # If game is over shut down the connection.
         if self.winner != None:
             self.closeall()
             return False
 
+        # Check for issues.
         if msg_code != 200 and msg_code != 207:
             if msg_code == 291:
                 raise MoveError(
@@ -198,10 +267,11 @@ class GthClient(object):
                     "unexpected move result code",
                 )
 
-
+        # Record time remaining if needed.
         if msg_code == 207:
             self.my_time = self.get_time(msg_text)
 
+        # Get the game status.
         msg_code, msg_text = self.get_msg();
         if msg_code < 311 or msg_code > 318:
             raise ProtocolError(
@@ -210,19 +280,31 @@ class GthClient(object):
                 "unexpected move status code",
             )
 
+        # Auto-bump the serial if needed since
+        # move was successful.
+        if self.who == "black":
+            self.serial += 1
+
         return True
 
 
     def get_move(self):
+        """
+        Get an opponent move from the server. Returns
+        a tuple: a boolean that is False when the
+        game is over, and the actual move string.
+        """
+
+        # Check that game is still on.
         if self.winner != None:
             raise MoveError(
                 MoveError.DONE,
                 "read move with game over",
             )
 
+        # Get the move and parse it.
         msg_code, msg_text = self.get_msg()
         words = msg_text.split()
-
         if msg_code in {311, 321, 322, 325, 315}:
             side = "black"
             self.serial = int(words[0])
@@ -248,6 +330,7 @@ class GthClient(object):
                 "unknown move status code",
             )
 
+        # Check for weirdness.
         if side != opponent(self.who):
             raise ProtocolError(
                 msg_code,
@@ -255,6 +338,7 @@ class GthClient(object):
                 "move received from wrong side"
             )
 
+        # Return an appropriate result.
         if self.who == "white":
             if msg_code in {311, 313, 315, 317}:
                 return (True, pos)
