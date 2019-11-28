@@ -1,3 +1,7 @@
+#!/usr/bin/python3
+
+# Random-move Gothello player.
+
 import random
 
 import gthclient
@@ -21,15 +25,15 @@ while True:
     except gthclient.MoveError as e:
         if e.cause == e.ILLEGAL:
             print("me: made illegal move, passing")
-            client.serial -= 1
             client.make_move("pass")
 
     cont, move = client.get_move()
-    print("opp:", cont, move)
-    if not cont:
-        break
-    if move == "pass":
+    print("opp:", move)
+    if cont and move == "pass":
+        print("me: pass to end game")
         client.make_move("pass")
         break
     else:
+        if not cont:
+            break
         board.remove(move)
