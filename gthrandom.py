@@ -3,10 +3,14 @@
 # Random-move Gothello player.
 
 import random
+import sys
 
 import gthclient
 
-client = gthclient.GthClient("black", "barton.cs.pdx.edu", 0)
+me = sys.argv[1]
+opp = gthclient.opponent(me)
+
+client = gthclient.GthClient(me, "localhost", 0)
 
 def letter_range(letter):
     for i in range(5):
@@ -31,28 +35,32 @@ def show_position():
             print(piece, end="")
         print()
 
+side = "black"
+
 while True:
     show_position()
-    move = random.choice(list(board))
-    print("me:", move)
-    try:
-        client.make_move(move)
-        grid["black"].add(move)
-        board.remove(move)
-    except gthclient.MoveError as e:
-        if e.cause == e.ILLEGAL:
-            print("me: made illegal move, passing")
-            client.make_move("pass")
-
-    show_position()
-    cont, move = client.get_move()
-    print("opp:", move)
-    if cont and move == "pass":
-        print("me: pass to end game")
-        client.make_move("pass")
-        break
+    if side == me:
+        move = random.choice(list(board))
+        print("me:", move)
+        try:
+            client.make_move(move)
+            grid[me].add(move)
+            board.remove(move)
+        except gthclient.MoveError as e:
+            if e.cause == e.ILLEGAL:
+                print("me: made illegal move, passing")
+                client.make_move("pass")
     else:
-        if not cont:
+        cont, move = client.get_move()
+        print("opp:", move)
+        if cont and move == "pass":
+            print("me: pass to end game")
+            client.make_move("pass")
             break
-        board.remove(move)
-        grid["white"].add(move)
+        else:
+            if not cont:
+                break
+            board.remove(move)
+            grid[opp].add(move)
+
+    side = gthclient.opponent(side)

@@ -28,3 +28,4 @@ object. `client.close_all()` will be called automatically
 when the game is over.
 
 A random-player client has been included as an example.
+Invoke with `python3 gthrandom.py black` (or `white`).
