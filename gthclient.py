@@ -138,11 +138,11 @@ class GthClient(object):
         if msg_code == 101:
             self.get_time_controls(msg_text)
             if side == "white":
-                self.my_time = white_time_control
-                self.opp_time = black_time_control
+                self.my_time = self.white_time_control
+                self.opp_time = self.black_time_control
             else:
-                self.my_time = black_time_control
-                self.opp_time = white_time_control
+                self.my_time = self.black_time_control
+                self.opp_time = self.white_time_control
 
         
         # Wait for the opponent to connect and check that
@@ -317,7 +317,7 @@ class GthClient(object):
             side = "white"
             self.serial = int(words[0])
             pos = words[2]
-            self.opp_time = int(words[2])
+            self.opp_time = int(words[3])
         else:
             raise ProtocolError(
                 msg_code,
